@@ -42,3 +42,7 @@ npm-debug.log
 
 # Local data dirs (dev/test)
 /.data/
+
+# Digested static files from `mix assets.deploy`
+/priv/static/**/*-[0-9a-f]*.*
+/priv/static/**/*.gz

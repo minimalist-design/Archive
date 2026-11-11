@@ -80,19 +80,26 @@ Migrations run automatically when the release starts.
 
 ## On disk
 
+Every video has its own folder inside its library folder, holding all of its
+files:
+
 ```
 <storage>/
   <library-slug>/
-    Title [videoid].webm          # best available format, any codec
-    Title [videoid].info.json     # full yt-dlp metadata
-    Title [videoid].jpg           # thumbnail
-    Title [videoid].en.vtt        # subtitles
+    Title [videoid]/
+      Title [videoid].webm          # best available format, any codec
+      Title [videoid].info.json     # full yt-dlp metadata
+      Title [videoid].jpg           # thumbnail
+      Title [videoid].en.vtt        # subtitles
 ```
 
 Database paths are relative to the storage directory, so moving the whole
 folder and updating the setting keeps everything working. Renaming a library
-renames its folder. Deleting a video or library asks whether to delete files
-too.
+renames its folder, and moving a video to another library moves its folder.
+Deleting a video or library asks whether to delete files too; deleting a
+video's files removes its whole folder. Videos archived with the older flat
+layout (files directly in the library folder) are moved into their own
+folders automatically at startup (`Archive.Layout`).
 
 ## Architecture
 

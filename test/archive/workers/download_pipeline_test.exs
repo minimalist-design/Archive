@@ -50,8 +50,8 @@ defmodule Archive.Workers.DownloadPipelineTest do
     assert video.title == "Fake video abc"
     assert video.uploader == "Fake Uploader"
     assert video.upload_date == ~D[2024-01-31]
-    assert video.file_path == "downloads/Fake video abc [abc].mp4"
-    assert video.thumbnail_path == "downloads/Fake video abc [abc].jpg"
+    assert video.file_path == "downloads/Fake video abc [abc]/Fake video abc [abc].mp4"
+    assert video.thumbnail_path == "downloads/Fake video abc [abc]/Fake video abc [abc].jpg"
     assert video.playback == "direct"
     assert video.metadata["view_count"] == 1234
     refute Map.has_key?(video.metadata, "formats")

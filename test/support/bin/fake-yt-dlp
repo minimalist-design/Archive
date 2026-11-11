@@ -116,6 +116,7 @@ if info_path:
     out = template.replace("%(title).150B", info["title"]).replace("%(id)s", info["id"])
     out = out.replace("%(ext)s", "mp4")
     base = out[: -len(".mp4")]
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     for pct in (10, 60, 100):
         print("ARCHIVE-PROGRESS " + json.dumps({
             "status": "downloading" if pct < 100 else "finished",

@@ -105,14 +105,15 @@ defmodule Archive.VideosTest do
     assert "is already archived" in errors_on(changeset).extractor_key
   end
 
-  test "move_to_library/2 moves the files and clears categories" do
+  test "move_to_library/2 moves the video folder and clears categories" do
     source = library_fixture(%{name: "Source"})
     target = library_fixture(%{name: "Target"})
     category = category_fixture(source, "C")
 
-    File.mkdir_p!(Paths.library_dir(source))
-    sub_rel = Path.join(source.slug, "Clip [x1].en.vtt")
+    File.mkdir_p!(Path.join(Paths.library_dir(source), "Clip [x1]"))
+    sub_rel = "source/Clip [x1]/Clip [x1].en.vtt"
     File.write!(Paths.absolute(sub_rel), "WEBVTT\n")
+    File.write!(Paths.absolute("source/Clip [x1]/notes.txt"), "extra file")
 
     video =
       video_fixture(source, %{base: "Clip [x1]"},
@@ -123,26 +124,52 @@ defmodule Archive.VideosTest do
 
     assert {:ok, moved} = Videos.move_to_library(video, target)
     assert moved.library_id == target.id
-    assert moved.file_path == "target/Clip [x1].mp4"
+    assert moved.file_path == "target/Clip [x1]/Clip [x1].mp4"
     assert moved.categories == []
     assert File.exists?(Paths.absolute(moved.file_path))
-    refute File.exists?(Paths.absolute(video.file_path))
-    assert [%{path: "target/Clip [x1].en.vtt"}] = moved.subtitles
-    assert File.exists?(Paths.absolute("target/Clip [x1].en.vtt"))
+    assert [%{path: "target/Clip [x1]/Clip [x1].en.vtt"}] = moved.subtitles
+    assert File.exists?(Paths.absolute("target/Clip [x1]/Clip [x1].en.vtt"))
+    assert File.exists?(Paths.absolute("target/Clip [x1]/notes.txt"))
+    refute File.exists?(Paths.absolute("source/Clip [x1]"))
   end
 
-  test "delete_video/2 keeps or removes files" do
+  test "move_to_library/2 avoids folder name clashes and handles legacy flat videos" do
+    source = library_fixture(%{name: "Src"})
+    target = library_fixture(%{name: "Dst"})
+    File.mkdir_p!(Paths.absolute("dst/Same"))
+
+    video = video_fixture(source, %{base: "Same"}, with_file: true, flat: true)
+
+    assert {:ok, moved} = Videos.move_to_library(video, target)
+    assert moved.file_path == "dst/Same (2)/Same.mp4"
+    assert File.exists?(Paths.absolute(moved.file_path))
+  end
+
+  test "delete_video/2 keeps or removes the video folder" do
     library = library_fixture()
     keep = video_fixture(library, %{}, with_file: true)
     remove = video_fixture(library, %{}, with_file: true)
+    File.write!(Path.join(Archive.Layout.video_dir(remove), "extra.txt"), "x")
 
     {:ok, _} = Videos.delete_video(keep)
     {:ok, _} = Videos.delete_video(remove, delete_files: true)
 
     assert File.exists?(Paths.absolute(keep.file_path))
-    refute File.exists?(Paths.absolute(remove.file_path))
+    refute File.exists?(Archive.Layout.video_dir(remove))
+    assert File.dir?(Paths.library_dir(library))
     assert Repo.aggregate(Video, :count) == 0
     assert Archive.Search.search("Video") == []
+  end
+
+  test "delete_video/2 removes only known files of a legacy flat video" do
+    library = library_fixture()
+    video = video_fixture(library, %{}, with_file: true, flat: true)
+    other = Path.join(Paths.library_dir(library), "unrelated.txt")
+    File.write!(other, "x")
+
+    {:ok, _} = Videos.delete_video(video, delete_files: true)
+    refute File.exists?(Paths.absolute(video.file_path))
+    assert File.exists?(other)
   end
 
   test "verify_files/0 flags missing files" do

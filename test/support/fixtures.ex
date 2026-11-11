@@ -30,16 +30,22 @@ defmodule Archive.Fixtures do
   end
 
   @doc """
-  Creates a video record. With `with_file: true` the sample video is copied
-  into the library folder.
+  Creates a video record stored as `<slug>/<base>/<base>.mp4`.
+
+  Options: `with_file: true` copies the sample video into place, `flat: true`
+  uses the legacy layout `<slug>/<base>.mp4`.
   """
   def video_fixture(library, attrs \\ %{}, opts \\ []) do
     n = System.unique_integer([:positive])
     base = Map.get(attrs, :base, "Video #{n} [id#{n}]")
-    rel = Path.join(library.slug, base <> ".mp4")
+
+    rel =
+      if opts[:flat],
+        do: Path.join(library.slug, base <> ".mp4"),
+        else: Path.join([library.slug, base, base <> ".mp4"])
 
     if opts[:with_file] do
-      File.mkdir_p!(Paths.library_dir(library))
+      File.mkdir_p!(Path.dirname(Paths.absolute(rel)))
       File.cp!(fixture_path("sample.mp4"), Paths.absolute(rel))
     end
 

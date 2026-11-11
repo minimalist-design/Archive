@@ -72,14 +72,14 @@ defmodule Archive.ImporterTest do
     refute File.exists?(file)
     assert video.title == "family trip"
     assert video.extractor_key == "local"
-    assert video.file_path == "imported/family trip.mp4"
+    assert video.file_path == "imported/family trip/family trip.mp4"
     assert video.duration == 3
     assert video.vcodec == "h264"
 
     video = Videos.get_video!(video.id)
-    assert [%{lang: "en", path: "imported/family trip.en.vtt"}] = video.subtitles
+    assert [%{lang: "en", path: "imported/family trip/family trip.en.vtt"}] = video.subtitles
 
-    assert File.read!(Paths.absolute("imported/family trip.en.vtt")) =~
+    assert File.read!(Paths.absolute("imported/family trip/family trip.en.vtt")) =~
              "00:00:01.000 --> 00:00:02.000"
 
     assert [_] = Archive.Search.search("walrus")
@@ -107,9 +107,9 @@ defmodule Archive.ImporterTest do
     assert video.title == "From Vimeo"
     assert video.extractor_key == "Vimeo"
     assert video.upload_date == ~D[2023-04-05]
-    assert video.file_path == "lib/From Vimeo [abc123].mp4"
-    assert video.thumbnail_path == "lib/From Vimeo [abc123].jpg"
-    assert video.info_json_path == "lib/From Vimeo [abc123].info.json"
+    assert video.file_path == "lib/From Vimeo [abc123]/From Vimeo [abc123].mp4"
+    assert video.thumbnail_path == "lib/From Vimeo [abc123]/From Vimeo [abc123].jpg"
+    assert video.info_json_path == "lib/From Vimeo [abc123]/From Vimeo [abc123].info.json"
 
     copy = Path.join(src, "again.mp4")
     File.cp!(fixture_path("sample.mp4"), copy)
@@ -131,8 +131,13 @@ defmodule Archive.ImporterTest do
     assert {:ok, video, nil} = Importer.import_file(file, library)
     assert video.title == "Fake video dQw4w9WgXcQ"
     assert video.remote_id == "dQw4w9WgXcQ"
-    assert video.file_path == "yt/Fake video dQw4w9WgXcQ [dQw4w9WgXcQ].mp4"
-    assert video.thumbnail_path == "yt/Fake video dQw4w9WgXcQ [dQw4w9WgXcQ].jpg"
+
+    assert video.file_path ==
+             "yt/Fake video dQw4w9WgXcQ [dQw4w9WgXcQ]/Fake video dQw4w9WgXcQ [dQw4w9WgXcQ].mp4"
+
+    assert video.thumbnail_path ==
+             "yt/Fake video dQw4w9WgXcQ [dQw4w9WgXcQ]/Fake video dQw4w9WgXcQ [dQw4w9WgXcQ].jpg"
+
     assert File.exists?(Paths.absolute(video.info_json_path))
     assert [_] = Videos.get_video!(video.id).subtitles
   end

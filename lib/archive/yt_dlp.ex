@@ -28,7 +28,9 @@ defmodule Archive.YtDlp do
   subtitle track that could not be fetched).
   """
   def download(info_json_path, output_dir, sub_langs, on_progress) do
-    template = Path.join(output_dir, "%(title).150B [%(id)s].%(ext)s")
+    # One folder per video; files inside keep the descriptive name.
+    name = "%(title).150B [%(id)s]"
+    template = Path.join([output_dir, name, name <> ".%(ext)s"])
 
     subtitle_args =
       case sub_langs do

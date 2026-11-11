@@ -25,6 +25,37 @@ defmodule Archive.Files do
   end
 
   defp copy_and_delete(src, dest) do
+    if File.dir?(src), do: copy_dir_and_delete(src, dest), else: copy_file_and_delete(src, dest)
+  end
+
+  defp copy_dir_and_delete(src, dest) do
+    case File.cp_r(src, dest) do
+      {:ok, _} ->
+        if tree_size(src) == tree_size(dest) do
+          File.rm_rf!(src)
+          :ok
+        else
+          File.rm_rf(dest)
+          {:error, :size_mismatch}
+        end
+
+      {:error, reason, _file} ->
+        File.rm_rf(dest)
+        {:error, reason}
+    end
+  end
+
+  defp tree_size(dir) do
+    Path.wildcard(Path.join(dir, "**"), match_dot: true)
+    |> Enum.reduce(0, fn path, acc ->
+      case File.stat(path) do
+        {:ok, %{type: :regular, size: size}} -> acc + size
+        _ -> acc
+      end
+    end)
+  end
+
+  defp copy_file_and_delete(src, dest) do
     with {:ok, _} <- File.copy(src, dest),
          {:ok, %{size: size}} <- File.stat(src),
          {:ok, %{size: ^size}} <- File.stat(dest) do
@@ -53,6 +84,20 @@ defmodule Archive.Files do
       Stream.iterate(2, &(&1 + 1))
       |> Stream.map(&"#{base} (#{&1})#{ext}")
       |> Enum.find(&(not File.exists?(&1) and not taken.(&1)))
+    end
+  end
+
+  @doc """
+  Returns `dir` if nothing exists there, otherwise `dir (2)`, `dir (3)`…
+  (unlike `unique_path/2`, dots in the name are not treated as an extension).
+  """
+  def unique_dir(dir) do
+    if File.exists?(dir) do
+      Stream.iterate(2, &(&1 + 1))
+      |> Stream.map(&"#{dir} (#{&1})")
+      |> Enum.find(&(not File.exists?(&1)))
+    else
+      dir
     end
   end
 

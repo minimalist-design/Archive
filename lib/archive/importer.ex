@@ -14,7 +14,7 @@ defmodule Archive.Importer do
   import Ecto.Query
   require Logger
 
-  alias Archive.{Files, Ingest, Paths, Repo, Videos, YtDlp}
+  alias Archive.{Files, Ingest, Layout, Paths, Repo, Videos, YtDlp}
   alias Archive.Media.Vtt
   alias Archive.Videos.Video
 
@@ -299,8 +299,10 @@ defmodule Archive.Importer do
           Files.safe_name(fallback_title)
       end
 
-    dest = Files.unique_path(Path.join(lib_dir, base <> ext))
-    new_base = Path.rootname(dest)
+    # Each video gets its own folder; files inside keep the descriptive name.
+    dir = Layout.new_dir(library, base)
+    new_base = Path.join(dir, Path.basename(dir))
+    dest = new_base <> ext
     old_base = Path.rootname(path)
 
     case Files.move(path, dest) do
@@ -323,13 +325,27 @@ defmodule Archive.Importer do
             {:ok, video, lookup_note}
 
           {:error, reason} ->
-            # Put the main file back where it was so nothing is lost.
+            # Put the files back where they were so nothing is lost.
             Files.move(dest, path)
+            restore_sidecars(dir, new_base, old_base)
+            File.rmdir(dir)
             {:error, format_error(reason)}
         end
 
       {:error, reason} ->
         {:error, "could not move file: #{inspect(reason)}"}
+    end
+  end
+
+  defp restore_sidecars(dir, new_base, old_base) do
+    case File.ls(dir) do
+      {:ok, names} ->
+        for name <- names, path = Path.join(dir, name), String.starts_with?(path, new_base) do
+          Files.move(path, old_base <> String.replace_prefix(path, new_base, ""))
+        end
+
+      _ ->
+        :ok
     end
   end
 

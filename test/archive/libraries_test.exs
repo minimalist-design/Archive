@@ -25,12 +25,12 @@ defmodule Archive.LibrariesTest do
 
   test "renaming a library renames its folder and rewrites stored paths" do
     library = library_fixture(%{name: "Old Name"})
-    File.mkdir_p!(Paths.library_dir(library))
-    sub = Path.join(library.slug, "a.en.vtt")
+    File.mkdir_p!(Path.join(Paths.library_dir(library), "a"))
+    sub = Path.join([library.slug, "a", "a.en.vtt"])
     File.write!(Paths.absolute(sub), "WEBVTT\n")
 
     video =
-      video_fixture(library, %{base: "a", thumbnail_path: "old-name/a.jpg"},
+      video_fixture(library, %{base: "a", thumbnail_path: "old-name/a/a.jpg"},
         with_file: true,
         subtitles: [%{lang: "en", auto: false, path: sub}]
       )
@@ -40,9 +40,9 @@ defmodule Archive.LibrariesTest do
     refute File.exists?(Path.join(Paths.storage_dir(), "old-name"))
 
     video = Videos.get_video!(video.id)
-    assert video.file_path == "new-name/a.mp4"
-    assert video.thumbnail_path == "new-name/a.jpg"
-    assert [%{path: "new-name/a.en.vtt"}] = video.subtitles
+    assert video.file_path == "new-name/a/a.mp4"
+    assert video.thumbnail_path == "new-name/a/a.jpg"
+    assert [%{path: "new-name/a/a.en.vtt"}] = video.subtitles
     assert File.exists?(Paths.absolute(video.file_path))
   end
 

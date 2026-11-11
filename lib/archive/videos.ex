@@ -3,7 +3,7 @@ defmodule Archive.Videos do
 
   import Ecto.Query
 
-  alias Archive.{Events, Files, Paths, Repo, Search}
+  alias Archive.{Events, Files, Layout, Paths, Repo, Search}
   alias Archive.Libraries.{Category, Library}
   alias Archive.Media.Vtt
   alias Archive.Videos.{Subtitle, Video}
@@ -313,73 +313,40 @@ defmodule Archive.Videos do
   end
 
   @doc """
-  Moves a video (and its sidecar files) to another library. Its categories are
-  dropped because categories are scoped per library.
+  Moves a video to another library by moving its folder (with everything in
+  it) into the target library folder. Its categories are dropped because
+  categories are scoped per library.
   """
   def move_to_library(%Video{} = video, %Library{} = target) do
     video = Repo.preload(video, [:subtitles, :categories, :library])
 
-    if video.library_id == target.id do
-      {:ok, video}
-    else
-      target_dir = Paths.library_dir(target)
-      File.mkdir_p!(target_dir)
+    with false <- video.library_id == target.id,
+         {:ok, video} <- Layout.ensure_own_folder(video) do
+      video = Repo.preload(video, [:subtitles, :categories], force: true)
+      old_folder = Path.dirname(video.file_path)
+      src_dir = Paths.absolute(old_folder)
 
-      old_base = Path.rootname(Path.basename(video.file_path))
+      dest_dir =
+        Files.unique_dir(Path.join(Paths.library_dir(target), Path.basename(old_folder)))
 
-      dest_video =
-        Files.unique_path(Path.join(target_dir, Path.basename(video.file_path)))
+      new_folder = Paths.relative(dest_dir)
+      rebase = fn rel -> rel && Path.join(new_folder, Path.relative_to(rel, old_folder)) end
 
-      new_base = Path.rootname(Path.basename(dest_video))
-
-      rename = fn
-        nil ->
-          nil
-
-        rel ->
-          name = Path.basename(rel)
-
-          name =
-            if String.starts_with?(name, old_base),
-              do: new_base <> String.replace_prefix(name, old_base, ""),
-              else: name
-
-          Path.join(target.slug, name)
-      end
-
-      moves =
-        [{video.file_path, Paths.relative(dest_video)}] ++
-          for rel <- [
-                video.info_json_path,
-                video.thumbnail_path | Enum.map(video.subtitles, & &1.path)
-              ],
-              rel != nil,
-              do: {rel, rename.(rel)}
-
-      results =
-        Enum.map(moves, fn {from, to} ->
-          {from, to, Files.move(Paths.absolute(from), Paths.absolute(to))}
-        end)
-
-      # The first move is the video file itself; sidecar failures are tolerated.
-      case List.first(results) do
-        {_, _, {:error, reason}} ->
-          {:error, reason}
-
-        {_, _, :ok} ->
+      case Files.move(src_dir, dest_dir) do
+        :ok ->
           Repo.transaction(fn ->
             video
             |> Ecto.Changeset.change(
               library_id: target.id,
-              file_path: Paths.relative(dest_video),
-              info_json_path: rename.(video.info_json_path),
-              thumbnail_path: rename.(video.thumbnail_path)
+              file_path: rebase.(video.file_path),
+              info_json_path: rebase.(video.info_json_path),
+              thumbnail_path: rebase.(video.thumbnail_path)
             )
             |> Ecto.Changeset.put_assoc(:categories, [])
             |> Repo.update!()
 
             for s <- video.subtitles do
-              s |> Ecto.Changeset.change(path: rename.(s.path)) |> Repo.update!()
+              s |> Ecto.Changeset.change(path: rebase.(s.path)) |> Repo.update!()
             end
           end)
 
@@ -387,7 +354,13 @@ defmodule Archive.Videos do
           Events.broadcast("videos", {:video_updated, video})
           Events.libraries_changed()
           {:ok, video}
+
+        {:error, reason} ->
+          {:error, reason}
       end
+    else
+      true -> {:ok, video}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -405,19 +378,24 @@ defmodule Archive.Videos do
       Files.rm(Paths.grid_thumb(video.id))
       Archive.Media.TranscodeSession.stop(video.id)
 
-      if opts[:delete_files] do
-        [
-          video.file_path,
-          video.info_json_path,
-          video.thumbnail_path | Enum.map(video.subtitles, & &1.path)
-        ]
-        |> Enum.reject(&is_nil/1)
-        |> Enum.each(&Files.rm(Paths.absolute(&1)))
-      end
+      if opts[:delete_files], do: delete_files(video)
 
       Events.broadcast("videos", {:video_deleted, video})
       Events.libraries_changed()
       {:ok, video}
+    end
+  end
+
+  # Videos in their own folder: remove the folder (everything in it belongs
+  # to the video). Legacy flat videos: remove the known files one by one.
+  defp delete_files(video) do
+    dir = Layout.video_dir(video)
+    library_dir = Path.join(Paths.storage_dir(), hd(Path.split(video.file_path)))
+
+    if Layout.own_folder?(video) and Path.dirname(Path.expand(dir)) == Path.expand(library_dir) do
+      File.rm_rf(dir)
+    else
+      video |> Layout.relative_files() |> Enum.each(&Files.rm(Paths.absolute(&1)))
     end
   end
 

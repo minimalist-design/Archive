@@ -1,0 +1,7 @@
+{
+  "name": "archive-assets",
+  "private": true,
+  "dependencies": {
+    "hls.js": "1.7.4"
+  }
+}

@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""A stand-in for yt-dlp used by the test suite.
+
+URL conventions (anything after the host is matched):
+  .../playlist      -> playlist with two entries (fake1, fake2)
+  .../unavailable   -> "This video is unavailable" error
+  .../outdated      -> "Unable to extract" error (looks like an outdated extractor)
+  ...?v=<id>        -> a single video with that id
+"""
+import json
+import os
+import re
+import shutil
+import sys
+
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures")
+args = sys.argv[1:]
+
+
+def opt(name):
+    if name in args:
+        i = args.index(name)
+        return args[i + 1] if i + 1 < len(args) else None
+    return None
+
+
+def url_arg():
+    if "--" in args:
+        return args[args.index("--") + 1]
+    return args[-1]
+
+
+def video_info(url):
+    m = re.search(r"[?&]v=([\w-]+)", url)
+    vid = m.group(1) if m else "fakevid0001"
+    return {
+        "id": vid,
+        "title": "Fake video " + vid,
+        "description": "A description mentioning platypus",
+        "uploader": "Fake Uploader",
+        "channel": "Fake Channel",
+        "upload_date": "20240131",
+        "duration": 3,
+        "tags": ["testing", "fake"],
+        "language": "es",
+        "extractor": "youtube",
+        "extractor_key": "Youtube",
+        "webpage_url": "https://www.youtube.com/watch?v=" + vid,
+        "view_count": 1234,
+        "subtitles": {"es": [{"ext": "vtt"}]},
+        "formats": [{"format_id": "18"}],
+    }
+
+
+def fail(message, code=1):
+    sys.stderr.write("ERROR: " + message + "\n")
+    sys.exit(code)
+
+
+if "--version" in args:
+    print("2099.01.01")
+    sys.exit(0)
+
+if "--update-to" in args:
+    print("yt-dlp is up to date (stable@2099.01.01)")
+    sys.exit(0)
+
+if "-J" in args:
+    url = url_arg()
+    if "unavailable" in url:
+        fail("[youtube] xyz: This video is unavailable")
+    if "outdated" in url:
+        fail("[youtube] xyz: Unable to extract initial data; please report this issue")
+    if "channel" in url and "--flat-playlist" in args:
+        print(json.dumps({
+            "_type": "playlist",
+            "title": "Fake channel",
+            "entries": [
+                {"_type": "playlist", "title": "Videos", "entries": [
+                    {"_type": "url", "ie_key": "Youtube", "id": "ch1", "title": "Ch 1",
+                     "url": "https://www.youtube.com/watch?v=ch1"}]},
+                {"_type": "url", "ie_key": "YoutubeTab", "id": "UCx", "title": "Playlists",
+                 "url": "https://www.youtube.com/@fake/playlists"},
+            ],
+        }))
+        sys.exit(0)
+    if "playlist" in url and "--flat-playlist" in args:
+        print(json.dumps({
+            "_type": "playlist",
+            "title": "Fake playlist",
+            "entries": [
+                {"_type": "url", "ie_key": "Youtube", "id": "fake1", "title": "First",
+                 "url": "https://www.youtube.com/watch?v=fake1"},
+                {"_type": "url", "ie_key": "Youtube", "id": "fake2", "title": "Second",
+                 "url": "https://www.youtube.com/watch?v=fake2"},
+            ],
+        }))
+        sys.exit(0)
+    print(json.dumps(video_info(url)))
+    sys.exit(0)
+
+info_path = opt("--load-info-json")
+if info_path:
+    with open(info_path) as f:
+        info = json.load(f)
+    template = opt("-o")
+    if "--skip-download" in args:
+        base = template[: -len(".%(ext)s")].replace("%%", "%")
+        if "--write-thumbnail" in args:
+            shutil.copy(os.path.join(FIXTURES, "sample.jpg"), base + ".jpg")
+        if "--write-subs" in args:
+            with open(base + ".en.vtt", "w") as f:
+                f.write("WEBVTT\n\n00:00.000 --> 00:01.000\nfetched subtitle walrus\n")
+        sys.exit(0)
+
+    out = template.replace("%(title).150B", info["title"]).replace("%(id)s", info["id"])
+    out = out.replace("%(ext)s", "mp4")
+    base = out[: -len(".mp4")]
+    for pct in (10, 60, 100):
+        print("ARCHIVE-PROGRESS " + json.dumps({
+            "status": "downloading" if pct < 100 else "finished",
+            "downloaded_bytes": pct * 1000, "total_bytes": 100000,
+            "speed": 50000.0, "eta": 1,
+        }), flush=True)
+    shutil.copy(os.path.join(FIXTURES, "sample.mp4"), out)
+    shutil.copy(os.path.join(FIXTURES, "sample.jpg"), base + ".jpg")
+    with open(base + ".info.json", "w") as f:
+        json.dump(info, f)
+    if "--write-subs" in args:
+        with open(base + ".es.vtt", "w") as f:
+            f.write("WEBVTT\n\n00:00.000 --> 00:01.000\nhola ornitorrinco\n")
+    print("ARCHIVE-FILE " + out, flush=True)
+    sys.exit(0)
+
+fail("fake-yt-dlp: unsupported arguments: " + " ".join(args), 2)

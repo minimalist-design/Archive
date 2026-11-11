@@ -1,0 +1,19 @@
+# systemd *user* unit for the video archive.
+# Installed by rel/install.sh into ~/.config/systemd/user/archive.service
+[Unit]
+Description=Video Archive (Phoenix + yt-dlp)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+# PORT, ARCHIVE_DATA_DIR, ARCHIVE_STORAGE_DIR, PHX_HOST…
+EnvironmentFile=-%h/.config/archive/archive.env
+ExecStart=@INSTALL_DIR@/bin/server
+ExecStop=@INSTALL_DIR@/bin/archive stop
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
